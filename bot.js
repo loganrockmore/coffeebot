@@ -25,19 +25,34 @@ var order_status_placed = 'placed';
 var order_status_cancelled = 'cancelled';
 
 
-controller.hears(['i would like (.*)', 'make me (.*)', 'please make me (.*)', 'i want (.*)'],['direct_message'],function(bot, message) {
+controller.hears(['i would like (.*)', 'make me (.*)', 'please make me (.*)', 'i want (.*)', 'could i please get (.*)'],['direct_message'],function(bot, message) {
 	
 	controller.storage.teams.get(message.user, function(err, existing_order) {
 		if (orderIsActive(existing_order)) {
 			bot.reply(message, "You already have an order in progress.  You can only have one order at a time.");
 		} else {
-			controller.storage.teams.save({id: message.user, order:message.match[1], status:order_status_placed}, function(err) {
-				if (err) {
+			
+			bot.api.users.info({user: message.user}, function(err, response) {
+                if (err) {
 					bot.reply(message, "There was a problem placing your order.");
-				} else {
-					bot.reply(message, "Okay! Your order has been placed!");
-				}
-			});
+                } else {
+	                
+					var new_order = {
+						id: message.user,
+						order: message.match[1],
+						name: response.user.real_name,
+						status: order_status_placed
+					};
+					
+					controller.storage.teams.save(new_order, function(err) {
+						if (err) {
+							bot.reply(message, "There was a problem placing your order.");
+						} else {
+							bot.reply(message, "Okay! Your order has been placed!");
+						}
+					});
+                }
+            });
 		}
 	});
 });
@@ -62,7 +77,11 @@ controller.hears(['cancel my order', 'cancel', 'cancel my drink'],['direct_messa
 			    {
 			        pattern: bot.utterances.yes,
 			        callback: function(response,convo) {
-				        controller.storage.teams.save({id: message.user, order:existing_order.order, status:order_status_cancelled}, function(err) {
+				        
+				        var cancelled_order = existing_order;
+				        cancelled_order.status = order_status_cancelled;
+				        
+				        controller.storage.teams.save(cancelled_order, function(err) {
 							if (err) {
 								bot.reply(message, "There was a problem placing your order.");
 							} else {
