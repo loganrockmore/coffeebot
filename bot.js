@@ -1,68 +1,3 @@
-/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-           ______     ______     ______   __  __     __     ______
-          /\  == \   /\  __ \   /\__  _\ /\ \/ /    /\ \   /\__  _\
-          \ \  __<   \ \ \/\ \  \/_/\ \/ \ \  _"-.  \ \ \  \/_/\ \/
-           \ \_____\  \ \_____\    \ \_\  \ \_\ \_\  \ \_\    \ \_\
-            \/_____/   \/_____/     \/_/   \/_/\/_/   \/_/     \/_/
-
-
-This is a sample Slack bot built with Botkit.
-
-This bot demonstrates many of the core features of Botkit:
-
-* Connect to Slack using the real time API
-* Receive messages based on "spoken" patterns
-* Reply to messages
-* Use the conversation system to ask questions
-* Use the built in storage system to store and retrieve information
-  for a user.
-
-# RUN THE BOT:
-
-  Get a Bot token from Slack:
-
-    -> http://my.slack.com/services/new/bot
-
-  Run your bot from the command line:
-
-    token=<MY TOKEN> node slack_bot.js
-
-# USE THE BOT:
-
-  Find your bot inside Slack to send it a direct message.
-
-  Say: "Hello"
-
-  The bot will reply "Hello!"
-
-  Say: "who are you?"
-
-  The bot will tell you its name, where it is running, and for how long.
-
-  Say: "Call me <nickname>"
-
-  Tell the bot your nickname. Now you are friends.
-
-  Say: "who am I?"
-
-  The bot will tell you your nickname, if it knows one for you.
-
-  Say: "shutdown"
-
-  The bot will ask if you are sure, and then shut itself down.
-
-  Make sure to invite your bot into other channels using /invite @<my bot>!
-
-# EXTEND THE BOT:
-
-  Botkit has many features for building cool and useful bots!
-
-  Read all about it here:
-
-    -> http://howdy.ai/botkit
-
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-
 
 if (!process.env.token) {
     console.log('Error: Specify token in environment');
@@ -73,174 +8,102 @@ var Botkit = require('Botkit');
 var os = require('os');
 
 var controller = Botkit.slackbot({
-    debug: true
+    debug: false
 });
 
 var bot = controller.spawn({
-    token: process.env.token
-}).startRTM();
-
-
-controller.hears(['hello', 'hi'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    bot.api.reactions.add({
-        timestamp: message.ts,
-        channel: message.channel,
-        name: 'robot_face',
-    }, function(err, res) {
-        if (err) {
-            bot.botkit.log('Failed to add emoji reaction :(', err);
-        }
-    });
-
-
-    controller.storage.users.get(message.user, function(err, user) {
-        if (user && user.name) {
-            bot.reply(message, 'Hello ' + user.name + '!!');
-        } else {
-            bot.reply(message, 'Hello.');
-        }
-    });
-});
-
-controller.hears(['call me (.*)', 'my name is (.*)'], 'direct_message,direct_mention,mention', function(bot, message) {
-    var name = message.match[1];
-    controller.storage.users.get(message.user, function(err, user) {
-        if (!user) {
-            user = {
-                id: message.user,
-            };
-        }
-        user.name = name;
-        controller.storage.users.save(user, function(err, id) {
-            bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
-        });
-    });
-});
-
-controller.hears(['what is my name', 'who am i'], 'direct_message,direct_mention,mention', function(bot, message) {
-
-    controller.storage.users.get(message.user, function(err, user) {
-        if (user && user.name) {
-            bot.reply(message, 'Your name is ' + user.name);
-        } else {
-            bot.startConversation(message, function(err, convo) {
-                if (!err) {
-                    convo.say('I do not know your name yet!');
-                    convo.ask('What should I call you?', function(response, convo) {
-                        convo.ask('You want me to call you `' + response.text + '`?', [
-                            {
-                                pattern: 'yes',
-                                callback: function(response, convo) {
-                                    // since no further messages are queued after this,
-                                    // the conversation will end naturally with status == 'completed'
-                                    convo.next();
-                                }
-                            },
-                            {
-                                pattern: 'no',
-                                callback: function(response, convo) {
-                                    // stop the conversation. this will cause it to end with status == 'stopped'
-                                    convo.stop();
-                                }
-                            },
-                            {
-                                default: true,
-                                callback: function(response, convo) {
-                                    convo.repeat();
-                                    convo.next();
-                                }
-                            }
-                        ]);
-
-                        convo.next();
-
-                    }, {'key': 'nickname'}); // store the results in a field called nickname
-
-                    convo.on('end', function(convo) {
-                        if (convo.status == 'completed') {
-                            bot.reply(message, 'OK! I will update my dossier...');
-
-                            controller.storage.users.get(message.user, function(err, user) {
-                                if (!user) {
-                                    user = {
-                                        id: message.user,
-                                    };
-                                }
-                                user.name = convo.extractResponse('nickname');
-                                controller.storage.users.save(user, function(err, id) {
-                                    bot.reply(message, 'Got it. I will call you ' + user.name + ' from now on.');
-                                });
-                            });
-
-
-
-                        } else {
-                            // this happens if the conversation ended prematurely for some reason
-                            bot.reply(message, 'OK, nevermind!');
-                        }
-                    });
-                }
-            });
-        }
-    });
+  token: process.env.token
+}).startRTM(function(err) {
+  if (err) {
+    throw new Error(err);
+  }
 });
 
 
-controller.hears(['shutdown'], 'direct_message,direct_mention,mention', function(bot, message) {
+var order_status_placed = 'placed';
+var order_status_cancelled = 'cancelled';
 
-    bot.startConversation(message, function(err, convo) {
 
-        convo.ask('Are you sure you want me to shutdown?', [
-            {
-                pattern: bot.utterances.yes,
-                callback: function(response, convo) {
-                    convo.say('Bye!');
-                    convo.next();
-                    setTimeout(function() {
-                        process.exit();
-                    }, 3000);
-                }
-            },
-        {
-            pattern: bot.utterances.no,
-            default: true,
-            callback: function(response, convo) {
-                convo.say('*Phew!*');
-                convo.next();
-            }
-        }
-        ]);
-    });
+controller.hears(['i would like (.*)', 'make me (.*)', 'please make me (.*)', 'i want (.*)'],['direct_message'],function(bot, message) {
+	
+	controller.storage.teams.get(message.user, function(err, existing_order) {
+		if (orderIsActive(existing_order)) {
+			bot.reply(message, "You already have an order in progress.  You can only have one order at a time.");
+		} else {
+			controller.storage.teams.save({id: message.user, order:message.match[1], status:order_status_placed}, function(err) {
+				if (err) {
+					bot.reply(message, "There was a problem placing your order.");
+				} else {
+					bot.reply(message, "Okay! Your order has been placed!");
+				}
+			});
+		}
+	});
 });
 
+controller.hears(['what did i order'],['direct_message'],function(bot, message) {
+	
+	controller.storage.teams.get(message.user, function(err, existing_order) {
+		if (orderIsActive(existing_order)) {
+			bot.reply(message, "You have an order of \"" + existing_order.order + "\" which is in status \"" + existing_order.status + "\".");
+		} else {
+			bot.reply(message, "You don't currently have an order in progress.");
+		}
+	});
+});
 
-controller.hears(['uptime', 'identify yourself', 'who are you', 'what is your name'],
-    'direct_message,direct_mention,mention', function(bot, message) {
+controller.hears(['cancel my order', 'cancel', 'cancel my drink'],['direct_message'],function(bot, message) {
+	
+	controller.storage.teams.get(message.user, function(err, existing_order) {
+		if (orderIsActive(existing_order)) {
+			bot.startConversation(message,function(err,convo) {
+			    convo.ask('Are you sure you want to cancel your order?',[
+			    {
+			        pattern: bot.utterances.yes,
+			        callback: function(response,convo) {
+				        controller.storage.teams.save({id: message.user, order:existing_order.order, status:order_status_cancelled}, function(err) {
+							if (err) {
+								bot.reply(message, "There was a problem placing your order.");
+							} else {
+								bot.reply(message, "Okay! Your order has been cancelled.");
+							}
+							convo.next();
+						});
+					}
+				},
+				{
+					pattern: bot.utterances.no,
+					callback: function(response,convo) {
+						convo.say('Okay.');
+						convo.next();
+					}
+				},
+				{
+					default: true,
+					callback: function(response,convo) {
+						convo.repeat();
+						convo.next();
+					}
+				}
+				]);
+			});
+		} else {
+			bot.reply(message, "You don't currently have an order in progress.");
+		}
+	});
+});
 
-        var hostname = os.hostname();
-        var uptime = formatUptime(process.uptime());
+controller.hears(['help'],['direct_message'],function(bot, message) {
+	bot.reply(message, "If you would like to order a coffee, please just say \"i would like\" followed by your order.");
+});
 
-        bot.reply(message,
-            ':robot_face: I am a bot named <@' + bot.identity.name +
-             '>. I have been running for ' + uptime + ' on ' + hostname + '.');
+controller.hears(['all orders'],['direct_message'],function(bot, message) {
+	controller.storage.teams.all(function(err, all_team_data) {
+		bot.reply(message, 'here are all of the current orders: ' + JSON.stringify(all_team_data, null, '\t'));
+	});
+});
 
-    });
-
-function formatUptime(uptime) {
-    var unit = 'second';
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'minute';
-    }
-    if (uptime > 60) {
-        uptime = uptime / 60;
-        unit = 'hour';
-    }
-    if (uptime != 1) {
-        unit = unit + 's';
-    }
-
-    uptime = uptime + ' ' + unit;
-    return uptime;
+function orderIsActive(order) {
+	return order &&
+			order.status == order_status_placed;
 }
