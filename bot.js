@@ -1,3 +1,4 @@
+// token=TOKEN_GOES_HERE node bot.js 
 
 if (!process.env.token) {
     console.log('Error: Specify token in environment');
